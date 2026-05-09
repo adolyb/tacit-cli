@@ -209,26 +209,28 @@ def _verify_reveal_envelope(
 
 
 def _collect_leaf_scripts(inp) -> list:
-  """Return raw leaf script bytes from whatever attribute embit chose.
+  """Return raw leaf script bytes from embit's taproot_scripts container.
 
-  embit field naming has shifted across versions, so try the common ones.
+  embit stores it as {control_block_bytes: leaf_script + leaf_ver_byte}.
+  Strip the trailing leaf-version byte before returning. We tolerate older
+  embit schemas (tuple keys, swapped key/val) as a fallback.
   """
   out = []
   for attr in ("taproot_scripts", "taproot_leaf_scripts"):
     container = getattr(inp, attr, None)
-    if not container:
+    if not container or not isinstance(container, dict):
       continue
-    if isinstance(container, dict):
-      for key, val in container.items():
-        # key may be the leaf_script bytes or a (script, leaf_ver) tuple
-        if isinstance(key, bytes):
-          out.append(key)
-        elif isinstance(key, tuple) and isinstance(key[0], (bytes, bytearray)):
-          out.append(bytes(key[0]))
-        elif isinstance(val, (bytes, bytearray)):
-          out.append(bytes(val))
-        elif isinstance(val, tuple) and isinstance(val[0], (bytes, bytearray)):
-          out.append(bytes(val[0]))
+    for key, val in container.items():
+      # Modern embit: key=control_block, val=leaf_script||leaf_ver
+      if isinstance(val, (bytes, bytearray)) and len(val) >= 2:
+        out.append(bytes(val[:-1]))
+        continue
+      # Older shapes: (script, leaf_ver) tuple in either key or value
+      if isinstance(val, tuple) and isinstance(val[0], (bytes, bytearray)):
+        out.append(bytes(val[0]))
+        continue
+      if isinstance(key, tuple) and isinstance(key[0], (bytes, bytearray)):
+        out.append(bytes(key[0]))
   return out
 
 
