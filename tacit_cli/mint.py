@@ -142,6 +142,34 @@ def _extract_chain_txs(out_chain: dict) -> tuple:
   return commit, reveals
 
 
+def _collect_internal_scripts(chains: list) -> set:
+  """Parse every PSBT in the plan and collect each input's witness_utxo
+  scriptPubKey. These are scripts the plan will spend back into; anything
+  outside this set is by definition external to the plan.
+  """
+  from embit.psbt import PSBT  # local import keeps top of file clean
+  scripts: set = set()
+  for chain in chains:
+    psbts = []
+    commit_hex = _extract_psbt_hex((chain.get("commit") or {}).get("psbt"))
+    if commit_hex:
+      psbts.append(commit_hex)
+    for r in chain.get("reveals") or []:
+      h = _extract_psbt_hex(r.get("psbt"))
+      if h:
+        psbts.append(h)
+    for h in psbts:
+      try:
+        psbt = PSBT.parse(bytes.fromhex(h))
+      except Exception:
+        continue
+      for inp in psbt.inputs:
+        utxo = getattr(inp, "witness_utxo", None)
+        if utxo is not None:
+          scripts.add(utxo.script_pubkey.data)
+  return scripts
+
+
 def _summarize_plan(build: dict) -> str:
   plan = build.get("plan") or {}
   chains = build.get("chains") or []
@@ -202,6 +230,20 @@ def run_mint(
   if not config.etch_txid:
     raise SystemExit("MintConfig.etch_txid must be set before signing reveals")
 
+  # Collect every internal scriptPubKey that appears as a witness_utxo in any
+  # PSBT in this plan. For chained reveals, reveal[i].vout[1] is reveal[i+1]'s
+  # witness_utxo, so this set contains exactly the addresses the chain spends
+  # back into. Anything outside this set + receiver + OP_RETURN is treated as
+  # an attempt to redirect funds.
+  allowed_scripts = _collect_internal_scripts(chains)
+  service_fee_addr = (build.get("plan") or {}).get("serviceFee", {}).get("recipientAddress")
+  if service_fee_addr:
+    try:
+      from embit import script as _esc
+      allowed_scripts.add(_esc.Script.from_address(service_fee_addr).data)
+    except Exception:
+      logger.warning("could not derive service-fee scriptPubKey from %s", service_fee_addr)
+
   signed_commits = []
   signed_reveals = []
   for chain in chains:
@@ -219,6 +261,7 @@ def run_mint(
         config.receiver_address,
         config.asset_id,
         config.etch_txid,
+        allowed_extra_scripts=allowed_scripts,
       )
       signed_reveals.append(signed_reveal)
 

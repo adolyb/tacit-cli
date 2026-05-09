@@ -64,10 +64,16 @@ class WifSigner:
     expected_receiver_address: str,
     expected_asset_id_hex: str,
     expected_etch_txid_hex: str,
+    allowed_extra_scripts: Optional[set] = None,
   ) -> str:
-    """Sign a reveal PSBT after verifying outputs and envelope payload."""
+    """Sign a reveal PSBT after verifying outputs and envelope payload.
+
+    `allowed_extra_scripts` is a set of scriptPubKey bytes that are
+    permitted as non-receiver outputs (e.g. chained-reveal funding for
+    count>1 mints, or known service-fee recipient script).
+    """
     psbt = _load_psbt(psbt_hex)
-    _verify_reveal_outputs(psbt, expected_receiver_address)
+    _verify_reveal_outputs(psbt, expected_receiver_address, allowed_extra_scripts or set())
     _verify_reveal_envelope(
       psbt,
       bytes.fromhex(expected_asset_id_hex),
@@ -134,9 +140,14 @@ def _verify_commit_outputs(psbt: PSBT, expected_from_address: str) -> None:
     raise SignerError("commit psbt has no P2TR commit output")
 
 
-def _verify_reveal_outputs(psbt: PSBT, expected_receiver_address: str) -> None:
+def _verify_reveal_outputs(
+  psbt: PSBT,
+  expected_receiver_address: str,
+  allowed_extra_scripts: set,
+) -> None:
   """Reveal must pay receiver at vout[0]. Other non-dust outputs are rejected
-  unless they are OP_RETURN data carriers.
+  unless they are OP_RETURN data carriers OR explicitly whitelisted (used
+  for chained reveals: vout[1] funds the next reveal in a count>1 plan).
   """
   receiver_script = script.Script.from_address(expected_receiver_address)
   if not psbt.tx.vout:
@@ -150,6 +161,8 @@ def _verify_reveal_outputs(psbt: PSBT, expected_receiver_address: str) -> None:
     if spk.data == receiver_script.data:
       continue
     if _is_op_return(spk):
+      continue
+    if spk.data in allowed_extra_scripts:
       continue
     if vout.value > DUST_THRESHOLD:
       raise SignerError(
