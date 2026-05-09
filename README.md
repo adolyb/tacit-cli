@@ -1,40 +1,39 @@
 # tacit-cli
 
-Headless CLI for the [Tacit](https://tacit.unode.one) PMINT token protocol on
-Bitcoin mainnet. Read the indexer (assets / holders / addresses) and mint
-tokens locally without a browser wallet.
+[Tacit](https://tacit.unode.one) PMINT 协议（Bitcoin 主网代币协议）的命令行
+工具。读索引器（资产 / 持有人 / 地址）+ 本地用 WIF 私钥签名直接 mint，
+不依赖任何浏览器钱包扩展。
 
-Status: works end-to-end on mainnet. The mint pipeline was reverse-engineered
-from real on-chain Tacit transactions, validated against the live
-`/api/mint/build` and `/api/mint/extract` responses, and successfully minted
-FAIR (see `docs/PROTOCOL_NOTES.md`).
+状态：主网端到端跑通。Mint 流程是从真实链上 Tacit 交易反推出来的，
+对照实测 `/api/mint/build` 和 `/api/mint/extract` 响应验证过，已成功
+mint FAIR（详见 `docs/PROTOCOL_NOTES.md`）。
 
-## What works
+## 能干啥
 
-- `tacit assets` / `tacit holders <ticker>` / `tacit address <btc_addr>` — pure
-  read access, no key needed
-- `tacit mint plan` — call `/api/mint/build`, print the plan, never sign
-- `tacit mint run` — full pipeline: fetch UTXOs → build → sign PSBTs locally
-  with a WIF private key → extract → broadcast via Esplora (blockstream.info,
-  with mempool.space fallback)
+- `tacit assets` / `tacit holders <ticker>` / `tacit address <btc_addr>`
+  ——纯只读，不需要私钥
+- `tacit mint plan`——调 `/api/mint/build`，打印计划，**不签名不广播**
+- `tacit mint run`——完整流程：拉 UTXO → build → 本地签 PSBT → extract
+  → 通过 Esplora 广播（默认 blockstream.info，自动 fallback 到
+  mempool.space）
 
-Mint signing handles:
+签名覆盖：
 
-- Commit tx: BIP-86 P2TR key-path Schnorr
-- Reveal tx: tap-script-path Schnorr against the inscription-style Tacit
-  envelope (`<xonly_pk> CHECKSIG OP_0 OP_IF "TACIT" 01 <payload> OP_ENDIF`)
-- Chained reveals for `count > 1` (single commit funds N reveals)
+- Commit 交易：BIP-86 P2TR key-path Schnorr
+- Reveal 交易：tap-script-path Schnorr，对应 inscription 风格的 Tacit
+  envelope（`<xonly_pk> CHECKSIG OP_0 OP_IF "TACIT" 01 <payload> OP_ENDIF`）
+- count > 1 时的 chained reveal（一笔 commit 资助 N 笔级联 reveal）
 
-Safety nets in `tacit_cli/signer.py`:
+`tacit_cli/signer.py` 里的安全网：
 
-- Per-tx-type output validation (commit must pay NUMS-H taproot + change to
-  `fromAddress`; reveal must pay `receiver` at `vout[0]`)
-- Whitelist for chained-reveal funding outputs (no third-party redirection)
-- Envelope payload check: leaf payload bytes 1..33 must equal `asset_id` and
-  bytes 33..65 must equal the asset's `etch_txid`
-- Fatal raise (not a warning) if any input remains unsigned after `sign_with`
+- 按交易类型分别校验输出（commit 必须付 NUMS-H taproot + 找零回
+  `fromAddress`；reveal 必须 `vout[0]` 付 `receiver`）
+- chained reveal 资助输出走白名单（防第三方地址重定向）
+- envelope 载荷锚点校验：leaf payload 第 1..33 字节必须等于 `asset_id`，
+  第 33..65 字节必须等于该资产的 `etch_txid`
+- `sign_with` 后任何输入未签 → 直接 raise（不 warn 不静默）
 
-## Install
+## 安装
 
 ```bash
 # Windows
@@ -46,79 +45,76 @@ activate.bat
 source ./activate.sh
 ```
 
-Both scripts create `.venv/` and install `requirements.txt` (`requests`,
-`embit`).
+两个脚本都会建 `.venv/` 并装 `requirements.txt`（`requests`、`embit`）。
 
-## Read commands (no key needed)
+## 只读命令（不需要私钥）
 
 ```bash
-tacit assets                                      # tokens + indexer overview
+tacit assets                                      # 资产列表 + 索引概览
 tacit assets --json
-tacit holders FAIR                                # paginated
-tacit holders FAIR --all --csv fair-holders.csv   # walk every page, dump CSV
+tacit holders FAIR                                # 分页持有人
+tacit holders FAIR --all --csv fair-holders.csv   # 翻完所有页导 CSV
 tacit holders <asset_id_hex> --page 2 --page-size 50
 tacit address bc1q7n644hxtjfsvk2vygmyda9tqrcu0v8q6zhnsw3
 tacit address bc1p... --json
 ```
 
-Also runs as a module: `python -m tacit_cli assets`.
+也可以用模块方式跑：`python -m tacit_cli assets`。
 
-## Mint (irreversible — handle with care)
+## Mint（不可逆，谨慎操作）
 
-1. Put your WIF in `.env` at the project root or one directory up:
+1. 把 WIF 放进项目根目录或上一层目录的 `.env`：
 
    ```
-   TACIT_WIF=Kx...your-WIF...
+   TACIT_WIF=Kx...你的WIF...
    ```
 
-   The loader only imports keys starting with `TACIT_` and never logs
-   values. `.env` is gitignored.
+   加载器**只读** `TACIT_` 开头的 key，**绝不**打印任何值。`.env`
+   已 gitignore。
 
-2. Dry-run plan (no signing, no broadcast):
+2. 干跑（不签名、不广播）：
 
    ```bash
    tacit mint plan --address bc1p7z6s... --asset FAIR --count 1 --fee-rate 8 \
-     --pubkey-hex <your-xonly-32B-hex>
+     --pubkey-hex <你的-xonly-32B-hex>
    ```
 
-3. Real mint (asks for a `YES` confirmation unless `--yes` is passed):
+3. 实跑（默认要打 `YES` 确认，加 `--yes` 跳过）：
 
    ```bash
    tacit mint run --address bc1p7z6s... --asset FAIR --count 1 --fee-rate 8
    ```
 
-   `--count >= 5` triggers the protocol's service-fee output; the build
-   response shows the recipient and amount, and the signer whitelists that
-   address so it does not trigger third-party-output rejection.
+   `--count >= 5` 会触发协议的服务费输出；build 响应里会显示收款地址
+   和金额，签名器会把这个地址加白名单，不会被"第三方输出"规则拒掉。
 
-4. Mint logs are written to `mint_log_<ts>.jsonl` (configurable with
-   `--log-dir`). They contain raw signed tx hex and txids — useful for
-   resuming a partial run if the process dies between commit and reveal.
+4. mint 日志写到 `mint_log_<ts>.jsonl`（用 `--log-dir` 改路径）。
+   日志里包含已签名的 raw tx hex 和 txid——commit 已发 reveal 没发的
+   时候就崩了，靠这个能恢复。
 
-See `docs/MINT.md` for fee tuning, recovery, and edge cases.
+费率调优、故障恢复和边界情况见 `docs/MINT.md`。
 
-## Repository layout
+## 项目结构
 
 ```
 tacit_cli/
-  client.py        # read-only HTTP client (assets, holders, address, utxos)
-  cli.py           # main 'tacit' entry point + read subcommands
-  mint.py          # build → sign → extract → broadcast orchestration
-  mint_cli.py      # 'tacit mint plan|run' subcommands
-  signer.py        # WifSigner: validates and signs commit/reveal PSBTs
-  broadcast.py     # Esplora client with fallback + idempotency
-  envload.py       # minimal .env loader
+  client.py        # 只读 HTTP 客户端（assets / holders / address / utxos）
+  cli.py           # 主入口 'tacit' + 只读子命令
+  mint.py          # build → sign → extract → broadcast 编排
+  mint_cli.py      # 'tacit mint plan|run' 子命令
+  signer.py        # WifSigner：校验并签 commit / reveal PSBT
+  broadcast.py     # Esplora 客户端，带 fallback 和幂等处理
+  envload.py       # 极简 .env 加载器
 docs/
-  PROTOCOL_NOTES.md    # reverse-engineered Tacit envelope structure
-  MINT.md              # mint usage + recovery
-  REVIEW_FINDINGS.md   # codex review findings + how each was fixed
+  PROTOCOL_NOTES.md    # Tacit envelope 反推过程
+  MINT.md              # mint 用法 + 故障恢复
+  REVIEW_FINDINGS.md   # codex review 发现的问题及修复
 samples/
-  build_resp_real.json # captured /api/mint/build success response
-  probe_*.py           # protocol-level tests
+  build_resp_real.json # 实测 /api/mint/build 成功响应
+  probe_*.py           # 协议层验证脚本
 ```
 
-## Acknowledgements
+## 致谢
 
-Protocol RE based on real on-chain Tacit reveal transactions and the public
-indexer at `https://tacit.unode.one`. Independent project — not affiliated
-with the Tacit indexer operator.
+协议反推基于真实链上 Tacit reveal 交易和公开索引器
+`https://tacit.unode.one`。**独立项目，与 Tacit 索引器运营方无关**。
