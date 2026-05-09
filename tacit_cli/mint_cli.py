@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os
 import re
 import sys
 from typing import Optional
@@ -15,14 +16,20 @@ ASSET_ID_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 DEFAULT_ASSET = "FAIR"
 
 
-def _resolve_asset_id(client: TacitClient, query: str) -> str:
-  if ASSET_ID_RE.match(query):
-    return query
+def _resolve_asset(client: TacitClient, query: str) -> tuple:
+  """Return (asset_id, etch_txid). The signer needs etch_txid to verify the
+  reveal envelope payload anchors to the right asset.
+  """
   data = client.get_assets()
+  if ASSET_ID_RE.match(query):
+    for asset in data.get("assets", []):
+      if asset.get("asset_id") == query:
+        return asset["asset_id"], asset.get("etch_txid", "")
+    raise SystemExit(f"asset_id not found in indexer: {query}")
   query_upper = query.upper()
   for asset in data.get("assets", []):
     if (asset.get("ticker") or "").upper() == query_upper:
-      return asset["asset_id"]
+      return asset["asset_id"], asset.get("etch_txid", "")
   raise SystemExit(f"ticker not found: {query}")
 
 
@@ -33,7 +40,7 @@ def _make_signer(wif: str):
 
 
 def _cmd_plan(args: argparse.Namespace, client: TacitClient) -> int:
-  asset_id = _resolve_asset_id(client, args.asset)
+  asset_id, etch_txid = _resolve_asset(client, args.asset)
   # We need a wallet pubkey for build; if user provided --wif use it, otherwise
   # require explicit --pubkey-hex (avoids forcing private key for plan-only).
   pubkey_hex = args.pubkey_hex
@@ -45,6 +52,7 @@ def _cmd_plan(args: argparse.Namespace, client: TacitClient) -> int:
   receiver = args.receiver or args.address
   config = MintConfig(
     asset_id=asset_id,
+    etch_txid=etch_txid,
     from_address=args.address,
     receiver_address=receiver,
     wallet_pubkey_hex=pubkey_hex,
@@ -73,7 +81,11 @@ def _cmd_plan(args: argparse.Namespace, client: TacitClient) -> int:
 
 
 def _cmd_run(args: argparse.Namespace, client: TacitClient) -> int:
-  asset_id = _resolve_asset_id(client, args.asset)
+  if not args.wif:
+    raise SystemExit("missing WIF: pass --wif or set TACIT_WIF in env")
+  asset_id, etch_txid = _resolve_asset(client, args.asset)
+  if not etch_txid:
+    raise SystemExit(f"indexer returned no etch_txid for asset {asset_id}; cannot verify envelope")
   signer = _make_signer(args.wif)
   receiver = args.receiver or args.address
 
@@ -84,6 +96,7 @@ def _cmd_run(args: argparse.Namespace, client: TacitClient) -> int:
 
   config = MintConfig(
     asset_id=asset_id,
+    etch_txid=etch_txid,
     from_address=args.address,
     receiver_address=receiver,
     wallet_pubkey_hex=pubkey_hex,
@@ -131,7 +144,9 @@ def register_subcommands(sub: argparse._SubParsersAction) -> None:
 
   p_run = mint_sub.add_parser("run", help="full mint: build + sign + extract + broadcast")
   p_run.add_argument("--address", required=True)
-  p_run.add_argument("--wif", required=True, help="WIF private key (NEVER log/commit)")
+  # Explicit --wif overrides env so a leaked TACIT_WIF can be locally shadowed.
+  p_run.add_argument("--wif", default=os.environ.get("TACIT_WIF"),
+                     help="WIF private key; falls back to $TACIT_WIF (NEVER log/commit)")
   p_run.add_argument("--asset", default=DEFAULT_ASSET)
   p_run.add_argument("--count", type=int, default=1)
   p_run.add_argument("--fee-rate", type=int, default=2)

@@ -17,6 +17,9 @@ class MintConfig:
   from_address: str
   receiver_address: str
   wallet_pubkey_hex: str
+  # etch_txid is needed by the signer to verify the envelope payload anchors
+  # to the right asset. Resolve from /api/assets in the CLI layer.
+  etch_txid: str = ""
   repeat_count: int = 1
   fee_rate: int = 2
 
@@ -168,19 +171,27 @@ def run_mint(
   mlog = MintLog(log_path)
   print(f"[3/5] signing {len(chains)} chain(s) -> log: {log_path}")
 
+  if not config.etch_txid:
+    raise SystemExit("MintConfig.etch_txid must be set before signing reveals")
+
   signed_commits = []
   signed_reveals = []
   for chain in chains:
     commit_hex = _extract_psbt_hex((chain.get("commit") or {}).get("psbt"))
     if not commit_hex:
       raise SystemExit(f"chain {chain.get('chainIndex')} missing commit psbt")
-    signed_commit = signer.sign_psbt(commit_hex, expected_receiver=config.receiver_address)
+    signed_commit = signer.sign_commit_psbt(commit_hex, config.from_address)
     signed_commits.append(signed_commit)
     for r in chain.get("reveals") or []:
       reveal_hex = _extract_psbt_hex(r.get("psbt"))
       if not reveal_hex:
         raise SystemExit(f"chain {chain.get('chainIndex')} reveal missing psbt hex")
-      signed_reveal = signer.sign_psbt(reveal_hex, expected_receiver=config.receiver_address)
+      signed_reveal = signer.sign_reveal_psbt(
+        reveal_hex,
+        config.receiver_address,
+        config.asset_id,
+        config.etch_txid,
+      )
       signed_reveals.append(signed_reveal)
 
   # 4. extract
@@ -189,6 +200,18 @@ def run_mint(
   out_chains = extracted.get("chains") or []
   if len(out_chains) != len(chains):
     logger.warning("extract returned %d chains, expected %d", len(out_chains), len(chains))
+
+  # 4b. persist raw hex BEFORE any broadcast so a crash mid-loop can resume
+  # without re-asking the indexer to rebuild (which may not be deterministic).
+  for ci, out_chain in enumerate(out_chains):
+    commit_raw = _extract_raw_hex(out_chain.get("commit"))
+    reveal_raws = [_extract_raw_hex(r) for r in (out_chain.get("reveals") or [])]
+    mlog.append({
+      "kind": "raw",
+      "chain": ci,
+      "commit_raw": commit_raw,
+      "reveal_raws": reveal_raws,
+    })
 
   # 5. broadcast
   print(f"[5/5] broadcasting via mempool.space")
