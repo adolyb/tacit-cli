@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tacit-cli"
+version = "0.1.0"
+description = "Read-only CLI for the Tacit PMINT indexer on Bitcoin"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.31",
+]
+
+[project.scripts]
+tacit = "tacit_cli.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["tacit_cli*"]

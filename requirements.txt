@@ -1,0 +1,2 @@
+requests>=2.31
+embit>=0.7.0
