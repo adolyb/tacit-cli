@@ -114,6 +114,34 @@ def _extract_raw_hex(tx_field) -> str:
   return tx_field or ""
 
 
+def _extract_chain_txs(out_chain: dict) -> tuple:
+  """Return ((commit_raw, commit_txid), [(reveal_raw, reveal_txid), ...]).
+
+  Real /api/mint/extract response uses items=[{kind, rawTxHex, txid, ...}]
+  with commits and reveals interleaved. Fall back to the older assumed
+  {commit, reveals} layout if items is absent.
+  """
+  items = out_chain.get("items")
+  if isinstance(items, list):
+    commit = ("", "")
+    reveals = []
+    for item in items:
+      raw = _extract_raw_hex(item)
+      txid = (item or {}).get("txid", "")
+      kind = (item or {}).get("kind")
+      if kind == "commit":
+        commit = (raw, txid)
+      elif kind == "reveal":
+        reveals.append((raw, txid))
+    return commit, reveals
+  c = out_chain.get("commit") or {}
+  commit = (_extract_raw_hex(c), c.get("txid", "") if isinstance(c, dict) else "")
+  reveals = []
+  for r in out_chain.get("reveals") or []:
+    reveals.append((_extract_raw_hex(r), (r or {}).get("txid", "")))
+  return commit, reveals
+
+
 def _summarize_plan(build: dict) -> str:
   plan = build.get("plan") or {}
   chains = build.get("chains") or []
@@ -203,24 +231,27 @@ def run_mint(
 
   # 4b. persist raw hex BEFORE any broadcast so a crash mid-loop can resume
   # without re-asking the indexer to rebuild (which may not be deterministic).
+  per_chain = []
   for ci, out_chain in enumerate(out_chains):
-    commit_raw = _extract_raw_hex(out_chain.get("commit"))
-    reveal_raws = [_extract_raw_hex(r) for r in (out_chain.get("reveals") or [])]
+    commit, reveals = _extract_chain_txs(out_chain)
+    per_chain.append((commit, reveals))
     mlog.append({
       "kind": "raw",
       "chain": ci,
-      "commit_raw": commit_raw,
-      "reveal_raws": reveal_raws,
+      "commit_raw": commit[0],
+      "commit_txid": commit[1],
+      "reveal_raws": [r[0] for r in reveals],
+      "reveal_txids": [r[1] for r in reveals],
     })
 
   # 5. broadcast
-  print(f"[5/5] broadcasting via mempool.space")
+  print(f"[5/5] broadcasting via {broadcaster.base}")
   results = []
-  for ci, out_chain in enumerate(out_chains):
-    commit_raw = _extract_raw_hex(out_chain.get("commit"))
+  for ci, (commit, reveals) in enumerate(per_chain):
+    commit_raw, server_commit_txid = commit
     if not commit_raw:
-      raise SystemExit(f"chain {ci} extract response missing commit raw hex: {out_chain}")
-    print(f"  chain {ci}: pushing commit ({len(commit_raw)//2} bytes)")
+      raise SystemExit(f"chain {ci} extract response missing commit raw hex")
+    print(f"  chain {ci}: pushing commit ({len(commit_raw)//2} bytes, server-txid {server_commit_txid[:16]}...)")
     try:
       commit_txid = broadcaster.push_tx(commit_raw)
     except BroadcastError as e:
@@ -231,13 +262,11 @@ def run_mint(
     broadcaster.wait_in_mempool(commit_txid)
     mlog.append({"kind": "commit", "chain": ci, "status": "mempool", "txid": commit_txid})
 
-    chain_reveals = out_chain.get("reveals") or []
     reveal_txids = []
-    for ri, rev in enumerate(chain_reveals):
-      reveal_raw = _extract_raw_hex(rev)
+    for ri, (reveal_raw, server_reveal_txid) in enumerate(reveals):
       if not reveal_raw:
-        raise SystemExit(f"chain {ci} reveal {ri} missing raw hex: {rev}")
-      print(f"  chain {ci}: pushing reveal {ri}")
+        raise SystemExit(f"chain {ci} reveal {ri} missing raw hex")
+      print(f"  chain {ci}: pushing reveal {ri} (server-txid {server_reveal_txid[:16]}...)")
       try:
         rev_txid = broadcaster.push_tx(reveal_raw)
       except BroadcastError as e:

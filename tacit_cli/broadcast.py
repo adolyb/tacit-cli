@@ -8,8 +8,17 @@ import requests
 
 logger = logging.getLogger("tacit_cli.broadcast")
 
-DEFAULT_BASE = "https://mempool.space/api"
+# Default to blockstream.info (Esplora API) because mempool.space's TLS has
+# been flaky from this host. Both expose identical /api/tx endpoints.
+# Override at runtime via TACIT_BROADCASTER env or MempoolBroadcaster(base=...).
+DEFAULT_BASE = "https://blockstream.info/api"
+FALLBACK_BASES = ("https://mempool.space/api",)
 RETRYABLE_STATUS = (500, 502, 503, 504)
+RETRYABLE_NETWORK_EXCEPTIONS = (
+  requests.exceptions.SSLError,
+  requests.exceptions.ConnectionError,
+  requests.exceptions.Timeout,
+)
 
 # Mempool/Bitcoin Core idempotency markers — when seen on a 4xx, treat as
 # success (the tx is already known to the network) and recover the txid
@@ -42,47 +51,66 @@ class MempoolBroadcaster:
     self.timeout = timeout
 
   def push_tx(self, raw_hex: str, max_retries: int = 3) -> str:
-    url = f"{self.base}/tx"
     last_exc = None
-    for attempt in range(1, max_retries + 1):
-      resp = self.session.post(
-        url,
-        data=raw_hex,
-        headers={"Content-Type": "text/plain"},
-        timeout=self.timeout,
-      )
-      if resp.status_code == 200:
-        return resp.text.strip()
-      if 400 <= resp.status_code < 500:
-        msg = resp.text.strip()
-        if _is_already_known(msg):
-          txid = _txid_from_raw(raw_hex)
-          logger.info("push_tx: tx already known, recovered txid=%s", txid)
-          return txid
-        raise BroadcastError(resp.status_code, msg)
-      if resp.status_code in RETRYABLE_STATUS:
-        last_exc = BroadcastError(resp.status_code, resp.text.strip())
-        sleep = 2 ** attempt
-        logger.warning("push_tx %s -> %s, retry %d in %ds", url, resp.status_code, attempt, sleep)
-        time.sleep(sleep)
-        continue
-      raise BroadcastError(resp.status_code, resp.text.strip())
-    raise last_exc or BroadcastError(0, "unreachable")
+    bases = [self.base] + [b for b in FALLBACK_BASES if b != self.base]
+    for base in bases:
+      url = f"{base}/tx"
+      for attempt in range(1, max_retries + 1):
+        try:
+          resp = self.session.post(
+            url,
+            data=raw_hex,
+            headers={"Content-Type": "text/plain"},
+            timeout=self.timeout,
+          )
+        except RETRYABLE_NETWORK_EXCEPTIONS as e:
+          # SSL/Connection/Timeout: retry within this base, then fall through
+          # to the next base if all attempts fail.
+          last_exc = e
+          sleep = 2 ** attempt
+          logger.warning("push_tx %s network error: %s; retry %d in %ds", url, e, attempt, sleep)
+          time.sleep(sleep)
+          continue
+        if resp.status_code == 200:
+          return resp.text.strip()
+        if 400 <= resp.status_code < 500:
+          msg = resp.text.strip()
+          if _is_already_known(msg):
+            txid = _txid_from_raw(raw_hex)
+            logger.info("push_tx: tx already known, recovered txid=%s", txid)
+            return txid
+          raise BroadcastError(resp.status_code, msg)
+        if resp.status_code in RETRYABLE_STATUS:
+          last_exc = BroadcastError(resp.status_code, resp.text.strip())
+          sleep = 2 ** attempt
+          logger.warning("push_tx %s -> %s, retry %d in %ds", url, resp.status_code, attempt, sleep)
+          time.sleep(sleep)
+          continue
+        raise BroadcastError(resp.status_code, resp.text.strip())
+      logger.warning("push_tx exhausted retries on %s, trying next base", base)
+    if isinstance(last_exc, BroadcastError):
+      raise last_exc
+    raise BroadcastError(0, f"all broadcasters failed: {last_exc}")
 
   def wait_in_mempool(self, txid: str, timeout: int = 120, interval: int = 3) -> dict:
-    """Poll /tx/{txid} until it returns 200 or timeout."""
-    url = f"{self.base}/tx/{txid}"
+    """Poll /tx/{txid} until it returns 200 or timeout. Tries primary base
+    first, falls back to other Esplora hosts on connection failures.
+    """
+    bases = [self.base] + [b for b in FALLBACK_BASES if b != self.base]
     deadline = time.time() + timeout
     while time.time() < deadline:
-      resp = self.session.get(url, timeout=self.timeout)
-      if resp.status_code == 200:
-        return resp.json()
-      if resp.status_code == 404:
-        time.sleep(interval)
-        continue
-      # 4xx other than 404 = something is wrong with the txid itself.
-      if 400 <= resp.status_code < 500:
-        raise BroadcastError(resp.status_code, resp.text.strip())
+      for base in bases:
+        url = f"{base}/tx/{txid}"
+        try:
+          resp = self.session.get(url, timeout=self.timeout)
+        except RETRYABLE_NETWORK_EXCEPTIONS:
+          continue
+        if resp.status_code == 200:
+          return resp.json()
+        if resp.status_code == 404:
+          break
+        if 400 <= resp.status_code < 500:
+          raise BroadcastError(resp.status_code, resp.text.strip())
       time.sleep(interval)
     raise BroadcastError(0, f"timeout waiting for {txid} in mempool")
 

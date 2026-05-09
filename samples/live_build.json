@@ -1,0 +1,90 @@
+{
+  "asset": {
+    "asset_id": "c4a678d6d674cdd0f4a1a9df0cb5980bd1255bd0b62f8ddc886e61bd43f56b83",
+    "etch_txid": "c2542e7fbaa8c0c9fa632d8720ebf0ba602f9cda8a4c4b1e5ca5d9e41acc4067",
+    "ticker": "FAIR",
+    "decimals": 0,
+    "mint_limit": "100",
+    "cap_amount": "21000000",
+    "cumulative_minted": "13507800"
+  },
+  "plan": {
+    "repeatCount": 1,
+    "chainCount": 1,
+    "totalRevealCount": 1,
+    "maxRevealsPerChain": 24,
+    "receiverAddress": "bc1p7z6snxwjv9cv7kduae5sqd07zvsc3y9pwxqc5sgdrqnza67tuxgs26kzv2",
+    "fromAddress": "bc1p7z6snxwjv9cv7kduae5sqd07zvsc3y9pwxqc5sgdrqnza67tuxgs26kzv2",
+    "feeRate": 8.0,
+    "dustSats": 546,
+    "revealFeePerTx": 1328,
+    "serviceFee": {
+      "applies": false,
+      "triggerRepeatCount": 5,
+      "mintsPerChain": 1,
+      "mintCount": 0,
+      "recipientAddress": "bc1q72z59p485z497p35rhtfnucvznwraa0dr4xsve"
+    }
+  },
+  "chains": [
+    {
+      "chainIndex": 0,
+      "userRevealCount": 1,
+      "serviceFeeRevealCount": 0,
+      "commit": {
+        "txid": "77e67802fcd80db570c924b5e44acc168f803e0ca773e93200aab56ee4b48d9c",
+        "psbt": {
+          "hex": "70736274ff0100890200000001d246a15c40a76b34a7d6a9cad199ff54f490e6458f79d7a970015c225311c8d50c00000000fdffffff0252070000000000002251202aa7ae007222ebbc069acecdbb9f7d5dfd7c0eb60b203ce7ef291ed1148f0470cbd5010000000000225120f0b50999d26170cf59bcee690035fe13218890a171818a410d18262eebcbe191000000000001012bf5e1010000000000225120f0b50999d26170cf59bcee690035fe13218890a171818a410d18262eebcbe191000000",
+          "base64": "cHNidP8BAIkCAAAAAdJGoVxAp2s0p9apytGZ/1T0kOZFj3nXqXABXCJTEcjVDAAAAAD9////AlIHAAAAAAAAIlEgKqeuAHIi67wGms7Nu599Xf18DrYLIDzn7yke0RSPBHDL1QEAAAAAACJRIPC1CZnSYXDPWbzuaQA1/hMhiJChcYGKQQ0YJi7ry+GRAAAAAAABASv14QEAAAAAACJRIPC1CZnSYXDPWbzuaQA1/hMhiJChcYGKQQ0YJi7ry+GRAAAA"
+        },
+        "fee": 1240,
+        "vsize": 155,
+        "inputUtxo": {
+          "txid": "d5c81153225c0170a9d7798f45e690f454ff99d1caa9d6a7346ba7405ca146d2",
+          "vout": 12,
+          "value": 123381,
+          "scriptPubKey": "5120f0b50999d26170cf59bcee690035fe13218890a171818a410d18262eebcbe191"
+        },
+        "outputAmount": 1874,
+        "changeAmount": 120267,
+        "changeScriptPubKey": "5120f0b50999d26170cf59bcee690035fe13218890a171818a410d18262eebcbe191"
+      },
+      "reveals": [
+        {
+          "index": 0,
+          "globalIndex": 0,
+          "userIndex": 0,
+          "kind": "user",
+          "recipientAddress": "bc1p7z6snxwjv9cv7kduae5sqd07zvsc3y9pwxqc5sgdrqnza67tuxgs26kzv2",
+          "recipientScriptPubKey": "5120f0b50999d26170cf59bcee690035fe13218890a171818a410d18262eebcbe191",
+          "txid": "2e630e3f7bf8f9029048e2d50f66b33972cccd481cc90079e75a609d5982b4da",
+          "psbt": {
+            "hex": "70736274ff01005e02000000019c8db4e46eb5aa0032e973a70c3e808f16cc4ae4b524c970b50dd8fc0278e6770000000000fdffffff012202000000000000225120f0b50999d26170cf59bcee690035fe13218890a171818a410d18262eebcbe191000000000001012b52070000000000002251202aa7ae007222ebbc069acecdbb9f7d5dfd7c0eb60b203ce7ef291ed1148f04702215c150929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0ba209d2a1670e79e7ff6ee16aa34fe151a3a879be9758be240e5110371a118e1fd39ac006305544143495401014c8a28c4a678d6d674cdd0f4a1a9df0cb5980bd1255bd0b62f8ddc886e61bd43f56b83c2542e7fbaa8c0c9fa632d8720ebf0ba602f9cda8a4c4b1e5ca5d9e41acc4067034119db0cd70358a5576dbe237ce8c5a43b825879485ded68afce9171e21b3e3d64000000000000001cb3c066e0fd013ae18ff945f9258b7534f48cf2ce9a923a100fca796448057268c00000",
+            "base64": "cHNidP8BAF4CAAAAAZyNtORutaoAMulzpww+gI8WzErktSTJcLUN2PwCeOZ3AAAAAAD9////ASICAAAAAAAAIlEg8LUJmdJhcM9ZvO5pADX+EyGIkKFxgYpBDRgmLuvL4ZEAAAAAAAEBK1IHAAAAAAAAIlEgKqeuAHIi67wGms7Nu599Xf18DrYLIDzn7yke0RSPBHAiFcFQkpt0waBJVLeLS2A16XpeB4paDyjsltVHv+6azoA6wLognSoWcOeef/buFqo0/hUaOoeb6XWL4kDlEQNxoRjh/TmsAGMFVEFDSVQBAUyKKMSmeNbWdM3Q9KGp3wy1mAvRJVvQti+N3IhuYb1D9WuDwlQuf7qowMn6Yy2HIOvwumAvnNqKTEseXKXZ5BrMQGcDQRnbDNcDWKVXbb4jfOjFpDuCWHlIXe1or86RceIbPj1kAAAAAAAAAByzwGbg/QE64Y/5Rfkli3U09IzyzpqSOhAPynlkSAVyaMAAAA=="
+          },
+          "fee": 1328,
+          "vsize": 166,
+          "prevTxid": "77e67802fcd80db570c924b5e44acc168f803e0ca773e93200aab56ee4b48d9c",
+          "prevVout": 0,
+          "isLast": true,
+          "nextOutputAmount": 0,
+          "payload": {
+            "payloadHex": "28c4a678d6d674cdd0f4a1a9df0cb5980bd1255bd0b62f8ddc886e61bd43f56b83c2542e7fbaa8c0c9fa632d8720ebf0ba602f9cda8a4c4b1e5ca5d9e41acc4067034119db0cd70358a5576dbe237ce8c5a43b825879485ded68afce9171e21b3e3d64000000000000001cb3c066e0fd013ae18ff945f9258b7534f48cf2ce9a923a100fca7964480572",
+            "commitment": "034119db0cd70358a5576dbe237ce8c5a43b825879485ded68afce9171e21b3e3d",
+            "amount": "100",
+            "blinding": "1cb3c066e0fd013ae18ff945f9258b7534f48cf2ce9a923a100fca7964480572"
+          }
+        }
+      ]
+    }
+  ],
+  "totalFees": {
+    "commitFees": 1240,
+    "revealFees": 1328,
+    "total": 2568
+  },
+  "warnings": [
+    "该资产存在待确认 PMINT，最终 cap 结果以 3 确认后的链上顺序为准"
+  ],
+  "recoveryId": "mrec_DIrsvL4CZoo584L1cySADmxaVbsEl4HX"
+}

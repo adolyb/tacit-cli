@@ -8,7 +8,12 @@ from typing import Optional
 
 from .broadcast import BroadcastError, MempoolBroadcaster
 from .client import TacitAPIError, TacitClient
+from .envload import load_dotenv
 from .mint import MintConfig, fetch_utxos, request_build, run_mint
+
+# Load .env before argparse defaults read os.environ. Walks up from CWD so
+# putting .env at the project root or one level up both work.
+load_dotenv()
 
 logger = logging.getLogger("tacit_cli.mint_cli")
 

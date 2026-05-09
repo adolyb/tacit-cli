@@ -7,6 +7,11 @@ import sys
 from typing import Optional
 
 from .client import TacitAPIError, TacitClient
+from .envload import load_dotenv
+
+# Walks up from CWD so .env at the project root or above both work. Read-only
+# commands don't need it, but loading early keeps `tacit mint ...` consistent.
+load_dotenv()
 
 ASSET_ID_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
@@ -147,6 +152,14 @@ def _build_parser() -> argparse.ArgumentParser:
   p_addr.add_argument("address")
   p_addr.add_argument("--json", action="store_true")
   p_addr.set_defaults(func=_cmd_address)
+
+  # Lazy import: keeps `tacit assets`/`tacit holders`/`tacit address` working
+  # even if embit (mint dep) is not installed.
+  try:
+    from .mint_cli import register_subcommands
+    register_subcommands(sub)
+  except ImportError:
+    pass
 
   return parser
 
